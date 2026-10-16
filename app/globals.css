@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/*
+ * PHMS design system tokens — green/black s.host-inspired palette.
+ * See .kiro/specs/ai-plant-health-monitoring/design.md (Visual Design System).
+ */
+@theme {
+  --color-sidebar: #0c0e0d; /* near-black sidebar / dark surfaces */
+  --color-accent: #cdf463; /* lime green — primary actions, active nav */
+  --color-deep-green: #17352c; /* selected/emphasis surfaces */
+  --color-canvas: #f4f6f5; /* light content background */
+  --color-chart-temp: #14532d; /* temperature series stroke */
+  --color-chart-humidity: #16a34a; /* humidity series stroke */
+  --color-chart-soil: #84cc16; /* soil moisture series stroke */
+  --font-sans: "Inter Variable", system-ui, sans-serif;
+}
+
+/* The dashboard commits to a single light look per the design system */
+body {
+  background: var(--color-canvas);
+  color: #111827;
+  font-family: "Inter Variable", system-ui, sans-serif;
+}
