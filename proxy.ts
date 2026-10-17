@@ -45,5 +45,10 @@ export default function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/|favicon\\.ico|login|api/auth/).*)'],
+  // Public (unguarded) paths: static chunks, favicon, robots.txt, the OG/
+  // twitter preview images (link scrapers have no session), the login page,
+  // and the auth endpoints themselves.
+  matcher: [
+    '/((?!_next/|favicon\\.ico|robots\\.txt|opengraph-image|twitter-image|login|api/auth/).*)',
+  ],
 };
