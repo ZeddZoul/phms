@@ -36,7 +36,7 @@ yarn-error.log*
 # vercel
 .vercel
 #kiro
-/.kiro
+/.kiro/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
