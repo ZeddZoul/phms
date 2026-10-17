@@ -77,6 +77,10 @@ curl -X POST http://localhost:3000/api/telemetry \
 
 The `x-device-key` header is required when security is enabled; browser submissions (the simulator) authenticate with the owner's session instead.
 
+## Device firmware
+
+The ESP32-S3-CAM sketch lives in [`firmware/esp32-s3-cam/`](firmware/esp32-s3-cam/esp32-s3-cam.ino) — wiring, Arduino IDE setup, soil-sensor calibration, and flashing steps are in [`firmware/README.md`](firmware/README.md). Fill in Wi-Fi credentials, the deployed endpoint URL, and `DEVICE_API_KEY` at flash time (never commit real values).
+
 Responses: `200` `{ "message": "...", "id": "<mongo id>" }` · `400` `{ "error": "<validation message>" }` · `500` `{ "error": "<service failure>" }`.
 
 Pipeline: validate → upload image to Cloudinary → Gemini health analysis (non-blocking) → persist to MongoDB.
