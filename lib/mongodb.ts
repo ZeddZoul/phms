@@ -32,6 +32,9 @@ async function connectToDatabase(): Promise<typeof mongoose> {
   if (!cached.promise) {
     const opts = {
       bufferCommands: false,
+      // Atlas URIs without a path default to the "test" database — pin a
+      // named one so data always lands in the same place.
+      dbName: process.env.MONGODB_DB || 'phms',
     };
 
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {

@@ -106,7 +106,7 @@ export default function ReportsPage() {
 
   const exportCsv = () => {
     const header =
-      'timestamp,temperature,humidity,soilMoisture,healthScore,status,diagnosis';
+      'timestamp,temperature,humidity,soilMoisture,healthScore,smoothedScore,maizeScore,beansScore,status,diagnosis';
     const rows = records.map((r) =>
       [
         r.timestamp,
@@ -114,6 +114,9 @@ export default function ReportsPage() {
         r.humidity,
         r.soilMoisture,
         r.healthScore ?? '',
+        r.smoothedScore ?? '',
+        r.maizeScore ?? '',
+        r.beansScore ?? '',
         r.status ?? '',
         `"${(r.diagnosis ?? '').replaceAll('"', '""')}"`,
       ].join(',')
@@ -172,7 +175,7 @@ export default function ReportsPage() {
     <div className="flex min-h-screen w-full bg-canvas">
       <Sidebar />
 
-      <main className="min-w-0 flex-1">
+      <main className="min-w-0 flex-1 pt-14 lg:pt-0">
         <PageHeader
           title="Reports"
           tabs={['Insights', 'Records']}
@@ -288,7 +291,7 @@ export default function ReportsPage() {
                   <div className="rounded-2xl bg-white p-6 shadow-sm lg:col-span-2">
                     <h2 className="mb-5 flex items-center gap-2 text-xl font-semibold text-gray-900">
                       Health Score Over Time
-                      <InfoHint text="The AI's 0–100 health score for each assessed capture, in time order. Higher is healthier: 70+ Healthy, 40–69 Warning, below 40 Critical." />
+                      <InfoHint text="The AI's 0–100 health score for each assessed capture. The solid line is the smoothed trend (EWMA) that damps single-capture noise; the dashed line is each raw score. 70+ Healthy, 40–69 Warning, below 40 Critical." />
                     </h2>
                     {scoreData.length === 0 ? (
                       <p className="text-sm text-gray-500">
@@ -316,13 +319,25 @@ export default function ReportsPage() {
                           <Tooltip
                             labelFormatter={(label) => new Date(label as string).toLocaleString()}
                           />
+                          <Legend />
                           <Area
                             type="monotone"
                             dataKey="healthScore"
+                            stroke="#9CA3AF"
+                            strokeWidth={1.5}
+                            strokeDasharray="4 3"
+                            fill="transparent"
+                            name="Raw score"
+                            dot={false}
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="smoothedScore"
                             stroke="#17352C"
                             strokeWidth={2}
                             fill="url(#gradScore)"
-                            name="Health Score"
+                            name="Smoothed trend"
+                            connectNulls
                             dot={false}
                           />
                         </AreaChart>

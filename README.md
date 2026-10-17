@@ -29,6 +29,11 @@ Built from the Kiro specs in [`.kiro/specs/ai-plant-health-monitoring/`](.kiro/s
    | `GEMINI_API_KEY` | Google Gemini API key |
    | `RESEND_API_KEY` | Resend API key for Critical email alerts (optional; dev logs the email instead) |
    | `ALERT_FROM_EMAIL` | Sender for alert emails (optional; defaults to Resend's test sender) |
+   | `DASHBOARD_PASSWORD` | Owner password for the dashboard (`/login`) |
+   | `SESSION_SECRET` | Random secret signing the session cookie (rotate to revoke sessions) |
+   | `DEVICE_API_KEY` | Shared key the ESP32 sends in the `x-device-key` header |
+
+   When `DASHBOARD_PASSWORD` and `SESSION_SECRET` are both set, every page and API requires sign-in; unset them for unguarded local development. **Always set them before hosting.**
 
    Missing `GEMINI_API_KEY` degrades gracefully (telemetry is stored without a health assessment). Missing Cloudinary credentials cause uploads to fail with HTTP 500.
 
@@ -63,11 +68,14 @@ Example (device simulation):
 
 ```bash
 curl -X POST http://localhost:3000/api/telemetry \
+  -H "x-device-key: $DEVICE_API_KEY" \
   -F image=@plant.jpg \
   -F temperature=25.5 \
   -F humidity=60 \
   -F soilMoisture=45
 ```
+
+The `x-device-key` header is required when security is enabled; browser submissions (the simulator) authenticate with the owner's session instead.
 
 Responses: `200` `{ "message": "...", "id": "<mongo id>" }` · `400` `{ "error": "<validation message>" }` · `500` `{ "error": "<service failure>" }`.
 
@@ -75,7 +83,7 @@ Pipeline: validate → upload image to Cloudinary → Gemini health analysis (no
 
 **Dev fallback:** when Cloudinary is not configured and `NODE_ENV !== 'production'`, images are stored inline as data URIs (4MB cap) so the pipeline works before credentials exist. Production still returns 500 without Cloudinary.
 
-**AI prompting:** all Gemini interaction lives in `lib/gemini.ts`. The system prompt is specialized for this project's fixed setup (maize + common bean seedlings in two containers) and is sent as a Gemini system instruction. It is sized ≥1,024 tokens so it qualifies for explicit context caching (1h TTL) — on free-tier keys (zero cache-storage quota) the code automatically falls back to sending it inline, and Gemini's implicit caching still discounts the repeated prefix.
+**AI prompting:** all Gemini interaction lives in `lib/gemini.ts`. The system prompt is specialized for this project's fixed setup (exactly two maize + two bean seedlings in two containers) and is sent as a Gemini system instruction. Responses are forced into a structured JSON schema (overall + per-crop maize/beans scores, status enum); each request includes the last 5 readings and the previous diagnosis so scores stay consistent over time; stored records also carry an EWMA-smoothed score, and Critical emails only fire after two consecutive Critical assessments. It is sized ≥1,024 tokens so it qualifies for explicit context caching (1h TTL) — on free-tier keys (zero cache-storage quota) the code automatically falls back to sending it inline, and Gemini's implicit caching still discounts the repeated prefix.
 
 ### `GET /api/telemetry/history?limit=N`
 

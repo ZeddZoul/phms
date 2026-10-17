@@ -7,6 +7,19 @@
       "runtimeArgs": ["run", "dev"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "phms-dev-nocloudinary",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000,
+      "autoPort": true,
+      "env": {
+        "CLOUDINARY_CLOUD_NAME": "",
+        "CLOUDINARY_API_KEY": "",
+        "CLOUDINARY_API_SECRET": "",
+        "MONGODB_URI": "mongodb://127.0.0.1:27317/phms_dev"
+      }
     }
   ]
 }

@@ -395,6 +395,10 @@ All Gemini interaction lives in `lib/gemini.ts`, which exports `analyzePlantHeal
 - **Explicit context caching**: a module-level cache entry is created via `genAI.caches.create` (`ttl: 3600s`) and referenced via `config.cachedContent`, so repeat requests do not re-send (or re-pay for) the system prompt. If cache creation or use fails — e.g. the free tier has zero cached-content storage quota, or the cache expired server-side — the code transparently falls back to sending the system instruction inline (and Gemini's implicit caching still discounts the repeated prefix on 2.5 models).
 - **MIME sniffing**: devices and tools sometimes post images as `application/octet-stream`; the route detects the real type from magic bytes (WebP/PNG/JPEG) before analysis and storage.
 - **Validation**: `parseHealthAssessment` extracts the JSON block, enforces `health_score` ∈ [0,100] and the status enum, and returns `{}` on any mismatch so the route degrades gracefully.
+- **Structured output**: every call sets `responseMimeType: 'application/json'` with a `responseSchema` (integer scores, status enum, diagnosis, actions array), so the model cannot return unparseable text.
+- **Per-crop scores**: the schema also requires `maize_score` and `beans_score` (the setup holds exactly two maize and two bean seedlings); they are stored as `maizeScore`/`beansScore` and shown as chips on the Dashboard and Simulator.
+- **Temporal context**: the route passes the last 5 records (telemetry, scores, most recent diagnosis) into the request as a RECENT HISTORY block, with an instruction to judge trends and keep scores consistent unless the image or telemetry justifies a change.
+- **Smoothing & alert hysteresis**: each assessed record also stores `smoothedScore` — an EWMA (alpha 0.4) over previous smoothed scores — plotted as the solid trend line on the Reports score chart (raw scores are the dashed line). The Critical email fires only on the second consecutive Critical assessment; a lone Critical logs a deferral.
 
 #### Development Fallback for Image Storage
 
@@ -770,6 +774,14 @@ A client page at `/simulator` that stands in for the ESP32 during development an
 - Image picker with preview, plus a **Use sample image** button that loads the bundled `public/sample-plant.webp` (a real maize-and-beans capture)
 - **Send to AI** posts multipart form-data to `POST /api/telemetry` — the same contract the device uses — then fetches `GET /api/telemetry/history?limit=1` and renders the stored verdict (HealthGauge, StatusBadge, diagnosis, recommended actions) with a link to the dashboard
 - Endpoint errors are surfaced verbatim in an error banner
+
+#### Security & Authentication (lib/auth.ts, proxy.ts, /login)
+
+A root `proxy.ts` (Next 16's request middleware) guards every route when `DASHBOARD_PASSWORD` + `SESSION_SECRET` are set: unauthenticated API calls get 401, pages redirect to `/login`. Sign-in posts to `/api/auth/login`, which timing-safe-compares the password and sets a stateless HMAC session token (`phms_session`, httpOnly, 30 days; rotating `SESSION_SECRET` revokes all sessions). `POST /api/telemetry` alternatively accepts an `x-device-key` header matching `DEVICE_API_KEY` so the ESP32 authenticates without cookies; the simulator rides the owner's session. The sidebar user block has a log-out control. With the env vars unset the guard is disabled for local convenience.
+
+#### Mobile Navigation
+
+Below the `lg` breakpoint the sidebar is replaced by a fixed near-black top bar (brand + menu button) and a slide-over drawer (same nav links, active states, user block/log-out, dimmed backdrop; closes on backdrop click or navigation). Page `<main>` elements carry `pt-14 lg:pt-0` to clear the fixed bar.
 
 #### Email Alerts (models/AlertSettings.ts, lib/alerts.ts, /api/settings/alerts)
 

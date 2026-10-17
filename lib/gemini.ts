@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import type { HealthAssessment } from '@/types/telemetry';
 
 const MODEL = 'gemini-2.5-flash';
@@ -14,12 +14,12 @@ const CACHE_TTL_SECONDS = 3600;
 export const SYSTEM_PROMPT = `You are an expert agronomist and plant pathologist AI embedded in an IoT plant health monitoring system.
 
 CONTEXT — WHAT YOU WILL ALWAYS SEE
-Every image you receive comes from the same fixed monitoring setup: two small plastic containers filled with dark potting soil, photographed from above or at a slight angle, each growing a mix of young maize (Zea mays) seedlings and common bean (Phaseolus vulgaris) seedlings together. The maize seedlings are the tall, narrow, strap-like grass leaves; the beans are the shorter plants with broad oval or heart-shaped (often trifoliate) leaves. The containers sit indoors or under shelter, so lighting in the photo may be uneven, dim, or flash-lit — account for white balance and shadows before judging leaf colour. Ignore the background (table, wall, paper, stakes): assess only the plants and the visible soil surface.
+Every image you receive comes from the same fixed monitoring setup: two small plastic containers filled with dark potting soil, photographed from above or at a slight angle, together holding exactly four plants — two young maize (Zea mays) seedlings and two common bean (Phaseolus vulgaris) seedlings. The maize seedlings are the tall, narrow, strap-like grass leaves; the beans are the shorter plants with broad oval or heart-shaped (often trifoliate) leaves. The containers sit indoors or under shelter, so lighting in the photo may be uneven, dim, or flash-lit — account for white balance and shadows before judging leaf colour. Ignore the background (table, wall, paper, stakes): assess only the plants and the visible soil surface.
 
 Every request also includes environmental telemetry captured at the same moment: soil moisture (volumetric %), air temperature (°C), and relative humidity (%). Always cross-reference what you see against these numbers.
 
 YOUR TASK
-Produce one combined health assessment for the maize and bean seedlings together. When one crop looks worse than the other, say so explicitly in the diagnosis and weight the overall score toward the worst credible problem, not the average.
+Produce one combined health assessment for the maize and bean seedlings together, plus a separate score for each crop: maize_score covering the two maize seedlings and beans_score covering the two bean seedlings. When one crop looks worse than the other, say so explicitly in the diagnosis and weight the overall score toward the worst credible problem, not the average.
 
 MAIZE (Zea mays) — WHAT TO CHECK
 - Healthy baseline: upright habit, uniform medium-to-dark green blades, new leaves emerging from the whorl.
@@ -65,7 +65,9 @@ Status mapping: score >= 70 → "Healthy"; 40–69 → "Warning"; < 40 → "Crit
 OUTPUT CONTRACT
 Respond with STRICTLY VALID JSON and nothing else — no markdown fences, no commentary, no trailing text:
 {
-  "health_score": <integer 0-100>,
+  "health_score": <integer 0-100, overall>,
+  "maize_score": <integer 0-100, the two maize seedlings>,
+  "beans_score": <integer 0-100, the two bean seedlings>,
   "status": "Healthy" | "Warning" | "Critical",
   "diagnosis": "<2-6 sentences naming which crop(s) are affected, the symptoms observed, the most likely cause, and how the telemetry supports it>",
   "recommended_actions": ["<3-6 concrete, prioritized actions a home grower can take, most urgent first>"]
@@ -76,6 +78,79 @@ interface TelemetryContext {
   temperature: number;
   humidity: number;
   soilMoisture: number;
+}
+
+/** Recent records passed back to the model for temporal consistency. */
+export interface AssessmentHistoryEntry {
+  timestamp: Date | string;
+  temperature: number;
+  humidity: number;
+  soilMoisture: number;
+  healthScore?: number;
+  status?: string;
+  diagnosis?: string;
+}
+
+/**
+ * Structured-output contract: Gemini is forced to return exactly this JSON
+ * shape (integer score, status enum), eliminating free-text parse failures.
+ */
+const RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    health_score: {
+      type: Type.INTEGER,
+      description: 'Overall health of the maize and bean seedlings, 0-100',
+    },
+    maize_score: {
+      type: Type.INTEGER,
+      description: 'Health of the two maize seedlings, 0-100',
+    },
+    beans_score: {
+      type: Type.INTEGER,
+      description: 'Health of the two bean seedlings, 0-100',
+    },
+    status: {
+      type: Type.STRING,
+      enum: ['Healthy', 'Warning', 'Critical'],
+    },
+    diagnosis: { type: Type.STRING },
+    recommended_actions: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+  },
+  required: [
+    'health_score',
+    'maize_score',
+    'beans_score',
+    'status',
+    'diagnosis',
+    'recommended_actions',
+  ],
+};
+
+function formatHistory(history: AssessmentHistoryEntry[]): string {
+  if (history.length === 0) return '';
+
+  const chronological = [...history].reverse();
+  const lines = chronological.map((h) => {
+    const when = new Date(h.timestamp).toLocaleString();
+    const assessed =
+      typeof h.healthScore === 'number'
+        ? ` — scored ${h.healthScore} (${h.status ?? 'n/a'})`
+        : ' — not assessed';
+    return `- [${when}] ${h.temperature}°C, ${h.humidity}% RH, ${h.soilMoisture}% soil${assessed}`;
+  });
+
+  const previous = history.find(
+    (h) => typeof h.healthScore === 'number' && h.diagnosis
+  );
+  const previousBlock = previous
+    ? `\nMost recent diagnosis (${new Date(previous.timestamp).toLocaleString()}, ${previous.healthScore}/100 ${previous.status}): ${String(previous.diagnosis).slice(0, 400)}`
+    : '';
+
+  return `RECENT HISTORY (oldest first):\n${lines.join('\n')}${previousBlock}\n\n`;
 }
 
 let client: GoogleGenAI | null = null;
@@ -133,14 +208,17 @@ export function parseHealthAssessment(text: string): Partial<HealthAssessment> {
 
   try {
     const parsed = JSON.parse(jsonMatch[0]);
+    const validScore = (v: unknown): v is number =>
+      typeof v === 'number' && v >= 0 && v <= 100;
+
     if (
-      typeof parsed.health_score === 'number' &&
-      parsed.health_score >= 0 &&
-      parsed.health_score <= 100 &&
+      validScore(parsed.health_score) &&
       ['Healthy', 'Warning', 'Critical'].includes(parsed.status)
     ) {
       return {
         health_score: parsed.health_score,
+        maize_score: validScore(parsed.maize_score) ? parsed.maize_score : undefined,
+        beans_score: validScore(parsed.beans_score) ? parsed.beans_score : undefined,
         status: parsed.status,
         diagnosis: typeof parsed.diagnosis === 'string' ? parsed.diagnosis : undefined,
         recommended_actions: Array.isArray(parsed.recommended_actions)
@@ -157,13 +235,19 @@ export function parseHealthAssessment(text: string): Partial<HealthAssessment> {
 export async function analyzePlantHealth(
   imageBuffer: Buffer,
   mimeType: string,
-  telemetry: TelemetryContext
+  telemetry: TelemetryContext,
+  history: AssessmentHistoryEntry[] = []
 ): Promise<Partial<HealthAssessment>> {
   const genAI = getClient();
 
+  const trendInstruction =
+    history.length > 0
+      ? ' Judge the CURRENT image in light of the history above: note whether conditions are improving, stable, or worsening, and keep your scores consistent with the previous assessments unless the image or telemetry justifies a change.'
+      : '';
+
   const contents = [
     {
-      text: `Environmental telemetry for this capture — Soil Moisture: ${telemetry.soilMoisture}%, Temperature: ${telemetry.temperature}°C, Humidity: ${telemetry.humidity}%. Analyze the attached image of the maize and bean seedlings and return the health assessment JSON.`,
+      text: `${formatHistory(history)}Environmental telemetry for this capture — Soil Moisture: ${telemetry.soilMoisture}%, Temperature: ${telemetry.temperature}°C, Humidity: ${telemetry.humidity}%. Analyze the attached image of the maize and bean seedlings and return the health assessment JSON.${trendInstruction}`,
     },
     {
       inlineData: {
@@ -173,14 +257,20 @@ export async function analyzePlantHealth(
     },
   ];
 
+  // Structured output: the model must return the RESPONSE_SCHEMA JSON shape
+  const generationConfig = {
+    responseMimeType: 'application/json',
+    responseSchema: RESPONSE_SCHEMA,
+  };
+
   const cachedContent = await getSystemPromptCache(genAI);
 
   try {
     const result = await genAI.models.generateContent({
       model: MODEL,
       config: cachedContent
-        ? { cachedContent }
-        : { systemInstruction: SYSTEM_PROMPT },
+        ? { cachedContent, ...generationConfig }
+        : { systemInstruction: SYSTEM_PROMPT, ...generationConfig },
       contents,
     });
     return parseHealthAssessment(result.text ?? '');
@@ -190,7 +280,7 @@ export async function analyzePlantHealth(
       promptCache = null;
       const result = await genAI.models.generateContent({
         model: MODEL,
-        config: { systemInstruction: SYSTEM_PROMPT },
+        config: { systemInstruction: SYSTEM_PROMPT, ...generationConfig },
         contents,
       });
       return parseHealthAssessment(result.text ?? '');

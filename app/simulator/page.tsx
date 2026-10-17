@@ -119,7 +119,7 @@ export default function SimulatorPage() {
     <div className="flex min-h-screen w-full bg-canvas">
       <Sidebar />
 
-      <main className="min-w-0 flex-1">
+      <main className="min-w-0 flex-1 pt-14 lg:pt-0">
         <PageHeader title="Device Simulator" tab="Send telemetry" />
 
         <div className="grid grid-cols-1 gap-6 p-4 md:p-8 lg:grid-cols-2">
@@ -227,6 +227,27 @@ export default function SimulatorPage() {
                       <HealthGauge score={result.healthScore} />
                       <div className="space-y-2">
                         <StatusBadge status={result.status} />
+                        {(result.maizeScore !== undefined ||
+                          result.beansScore !== undefined) && (
+                          <div className="flex flex-wrap gap-2 text-sm">
+                            {result.maizeScore !== undefined && (
+                              <span className="rounded-lg bg-gray-50 px-2.5 py-1">
+                                <span className="text-gray-500">Maize</span>{' '}
+                                <span className="font-bold text-gray-900">
+                                  {result.maizeScore}
+                                </span>
+                              </span>
+                            )}
+                            {result.beansScore !== undefined && (
+                              <span className="rounded-lg bg-gray-50 px-2.5 py-1">
+                                <span className="text-gray-500">Beans</span>{' '}
+                                <span className="font-bold text-gray-900">
+                                  {result.beansScore}
+                                </span>
+                              </span>
+                            )}
+                          </div>
+                        )}
                         <div className="text-sm text-gray-500">
                           Recorded{' '}
                           {new Date(result.timestamp).toLocaleTimeString()}

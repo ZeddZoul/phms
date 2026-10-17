@@ -89,7 +89,7 @@ export default function SettingsPage() {
     <div className="flex min-h-screen w-full bg-canvas">
       <Sidebar />
 
-      <main className="min-w-0 flex-1">
+      <main className="min-w-0 flex-1 pt-14 lg:pt-0">
         <PageHeader title="Settings" tab="Preferences" />
 
         <div className="max-w-3xl space-y-6 p-4 md:p-8">
@@ -211,8 +211,9 @@ export default function SettingsPage() {
               Email Alerts
             </h2>
             <p className="mb-5 text-sm text-gray-500">
-              Get an email when an assessment comes back Critical — it includes
-              the diagnosis and what you should do. At most one email per hour.
+              Get an email when two assessments in a row come back Critical — it
+              includes the diagnosis and what you should do. At most one email
+              per hour.
             </p>
             <div className="space-y-5">
               <label className="flex items-center justify-between gap-4">

@@ -82,7 +82,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: 'How do email alerts work?',
-    a: 'Register your email in Settings and switch alerts on. When an assessment comes back Critical, you get an email with the diagnosis and the recommended actions — at most one email per hour.',
+    a: 'Register your email in Settings and switch alerts on. When two assessments in a row come back Critical (one alone can be noise), you get an email with the diagnosis and the recommended actions — at most one email per hour.',
   },
   {
     q: 'How do I connect the ESP32?',
@@ -121,7 +121,7 @@ export default function HelpPage() {
     <div className="flex min-h-screen w-full bg-canvas">
       <Sidebar />
 
-      <main className="min-w-0 flex-1">
+      <main className="min-w-0 flex-1 pt-14 lg:pt-0">
         <PageHeader title="Help" tab="Guide" />
 
         <div className="mx-auto max-w-4xl space-y-8 p-4 md:p-8">

@@ -86,7 +86,7 @@ export default function Dashboard() {
     <div className="flex min-h-screen w-full bg-canvas">
       <Sidebar />
 
-      <main className="min-w-0 flex-1">
+      <main className="min-w-0 flex-1 pt-14 lg:pt-0">
         <PageHeader title="Plant Health Monitoring Dashboard" tab="Overview" />
 
         <div className="space-y-6 p-4 md:p-8">
@@ -137,6 +137,27 @@ export default function Dashboard() {
                         <span className="font-medium text-gray-700">Status</span>
                         <StatusBadge status={currentData.status} />
                       </div>
+                      {(currentData.maizeScore !== undefined ||
+                        currentData.beansScore !== undefined) && (
+                        <div className="flex flex-wrap gap-2">
+                          {currentData.maizeScore !== undefined && (
+                            <span className="rounded-lg bg-gray-50 px-3 py-1.5 text-sm">
+                              <span className="text-gray-500">Maize</span>{' '}
+                              <span className="font-bold text-gray-900">
+                                {currentData.maizeScore}/100
+                              </span>
+                            </span>
+                          )}
+                          {currentData.beansScore !== undefined && (
+                            <span className="rounded-lg bg-gray-50 px-3 py-1.5 text-sm">
+                              <span className="text-gray-500">Beans</span>{' '}
+                              <span className="font-bold text-gray-900">
+                                {currentData.beansScore}/100
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                      )}
                       {currentData.diagnosis && (
                         <div>
                           <span className="font-medium text-gray-700">Diagnosis</span>

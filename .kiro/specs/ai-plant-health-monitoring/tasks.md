@@ -263,6 +263,24 @@ This implementation plan breaks down the development of a full-stack Next.js 16+
   - Rebuild `app/help/page.tsx`: deep-green search hero, topic card grid linking into the app, FAQ accordion, live search filtering topics and FAQs
   - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5_
 
+- [x] 24. Implement security and authentication
+  - Create `lib/auth.ts` (timing-safe session/password/device-key checks, stateless HMAC session token), `proxy.ts` request guard, `/login` page, and `/api/auth/login` + `/api/auth/logout` routes
+  - Accept `x-device-key` on POST /api/telemetry for the ESP32; add log-out to the sidebar user block; generate DASHBOARD_PASSWORD, SESSION_SECRET and DEVICE_API_KEY into `.env.local`
+  - Pin the Mongoose connection to the `phms` database (Atlas URIs without a path default to `test`)
+  - _Requirements: 18.1, 18.2, 18.3, 18.4, 18.5, 18.6_
+
+- [x] 25. Implement mobile navigation
+  - Rework the Sidebar into desktop aside + fixed mobile top bar + slide-over drawer (shared NavLinks/UserBlock); add `pt-14 lg:pt-0` to every page main
+  - _Requirements: 10.14, 10.4_
+
+- [x] 26. Increase AI accuracy: structured output, temporal context, smoothing, per-crop scores
+  - Force structured JSON via `responseSchema` (integer scores, status enum) in `lib/gemini.ts`
+  - Pass the last 5 records + most recent diagnosis into each request as RECENT HISTORY with a trend-consistency instruction
+  - Store `smoothedScore` (EWMA alpha 0.4) per assessed record; plot it as the solid trend line (raw dashed) on the Reports score chart and add smoothed/per-crop columns to the CSV
+  - Alert hysteresis: send the Critical email only on the second consecutive Critical; update Settings/Help copy
+  - Per-crop `maize_score`/`beans_score` for the fixed 2-maize + 2-beans setup, shown as chips on the Dashboard and Simulator
+  - _Requirements: 4.12, 4.13, 4.14, 4.15, 17.4_
+
 ## Notes
 
 - Tasks marked with `*` are optional testing tasks and can be skipped for faster MVP
@@ -370,6 +388,14 @@ This implementation plan breaks down the development of a full-stack Next.js 16+
     {
       "id": 22,
       "tasks": ["22", "23"]
+    },
+    {
+      "id": 23,
+      "tasks": ["24", "25"]
+    },
+    {
+      "id": 24,
+      "tasks": ["26"]
     }
   ]
 }

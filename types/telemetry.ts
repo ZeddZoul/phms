@@ -7,6 +7,8 @@ export interface TelemetryInput {
 
 export interface HealthAssessment {
   health_score: number;
+  maize_score?: number;
+  beans_score?: number;
   status: 'Healthy' | 'Warning' | 'Critical';
   diagnosis: string;
   recommended_actions: string[];
@@ -20,6 +22,9 @@ export interface TelemetryRecord {
   soilMoisture: number;
   imageUrl: string;
   healthScore?: number;
+  smoothedScore?: number;
+  maizeScore?: number;
+  beansScore?: number;
   status?: 'Healthy' | 'Warning' | 'Critical';
   diagnosis?: string;
   recommendedActions?: string[];

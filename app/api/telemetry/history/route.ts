@@ -3,15 +3,18 @@ import connectToDatabase from '@/lib/mongodb';
 import Telemetry from '@/models/Telemetry';
 
 export async function GET(request: NextRequest) {
+  // Read request data OUTSIDE the try/catch: under cacheComponents, Next
+  // probes GET handlers at build time and aborts via an internal
+  // NEXT_PRERENDER_INTERRUPTED exception the moment a request value is
+  // touched — catching it would log noise and break the dynamic bailout.
+  const limitParam = request.nextUrl.searchParams.get('limit');
+  const limit = limitParam ? parseInt(limitParam, 10) : 100;
+
+  if (isNaN(limit) || limit < 1) {
+    return NextResponse.json({ error: 'Invalid limit parameter' }, { status: 400 });
+  }
+
   try {
-    const { searchParams } = new URL(request.url);
-    const limitParam = searchParams.get('limit');
-    const limit = limitParam ? parseInt(limitParam, 10) : 100;
-
-    if (isNaN(limit) || limit < 1) {
-      return NextResponse.json({ error: 'Invalid limit parameter' }, { status: 400 });
-    }
-
     await connectToDatabase();
 
     const records = await Telemetry.find()

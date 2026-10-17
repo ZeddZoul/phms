@@ -8,7 +8,10 @@ function loadEnvLocal() {
   try {
     const env = readFileSync(new URL('../.env.local', import.meta.url), 'utf8');
     const match = env.match(/^MONGODB_URI=(.+)$/m);
-    if (match) process.env.MONGODB_URI = match[1].trim();
+    if (match) {
+      // Trim whitespace and surrounding quotes, like dotenv does
+      process.env.MONGODB_URI = match[1].trim().replace(/^["']|["']$/g, '');
+    }
   } catch {
     // no .env.local — fall through to the check below
   }
@@ -63,7 +66,9 @@ Object.assign(records[records.length - 1], {
   ],
 });
 
-await mongoose.connect(process.env.MONGODB_URI);
+await mongoose.connect(process.env.MONGODB_URI, {
+  dbName: process.env.MONGODB_DB || 'phms',
+});
 await Telemetry.deleteMany({});
 await Telemetry.insertMany(records);
 const count = await Telemetry.countDocuments();

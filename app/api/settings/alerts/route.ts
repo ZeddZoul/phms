@@ -1,10 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import AlertSettings from '@/models/AlertSettings';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function GET() {
+  // This handler reads no request data, so under cacheComponents Next could
+  // try to prerender it at build time and freeze a build-time DB snapshot —
+  // connection() explicitly marks it as runtime-only.
+  await connection();
+
   try {
     await connectToDatabase();
     const settings = await AlertSettings.findOne().lean();

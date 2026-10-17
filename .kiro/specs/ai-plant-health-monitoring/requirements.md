@@ -67,7 +67,7 @@ The AI-Powered Plant Health Monitoring IoT System is a full-stack Next.js web ap
 #### Acceptance Criteria
 
 1. WHEN a Plant_Image has been successfully uploaded to Image_Storage and the Telemetry_Data has passed validation, THE System SHALL invoke the AI_Engine with the image and environmental metrics before persisting the telemetry record
-2. THE System SHALL provide the AI_Engine with a maize-and-beans-specific system instruction covering: the fixed capture setup (two containers of young maize and common bean seedlings), crop-specific disease and deficiency indicators for maize (Zea mays) and common beans (Phaseolus vulgaris), pest checks, telemetry cross-referencing rules, environment ranges, a 0-100 scoring rubric with status mapping, and a strict-JSON output contract (authoritative text: SYSTEM_PROMPT in lib/gemini.ts)
+2. THE System SHALL provide the AI_Engine with a maize-and-beans-specific system instruction covering: the fixed capture setup (two containers holding exactly two maize and two bean seedlings), crop-specific disease and deficiency indicators for maize (Zea mays) and common beans (Phaseolus vulgaris), pest checks, telemetry cross-referencing rules, environment ranges, a 0-100 scoring rubric with status mapping, and a strict-JSON output contract (authoritative text: SYSTEM_PROMPT in lib/gemini.ts)
 3. THE System SHALL request the AI_Engine to generate a Health_Assessment containing health_score, status, diagnosis, and recommended_actions fields
 4. THE System SHALL validate that the AI_Engine response contains a Health_Score between 0 and 100
 5. THE System SHALL validate that the AI_Engine response contains a Status_Classification with value Healthy, Warning, or Critical
@@ -77,6 +77,10 @@ The AI-Powered Plant Health Monitoring IoT System is a full-stack Next.js web ap
 9. THE System SHALL send the static system prompt as a Gemini system instruction, separate from the per-request content (telemetry text and image)
 10. THE System SHALL attempt to reuse the system prompt across requests via Gemini explicit context caching with a one-hour TTL, and SHALL fall back to sending the system instruction inline when caching is unavailable (e.g. free-tier cache quota) or the cache has expired
 11. WHEN the declared image MIME type is not an image type, THE System SHALL detect the actual type from the image bytes (WebP, PNG, or JPEG) before analysis and storage
+12. THE System SHALL request structured JSON output from the AI_Engine via a response schema (integer scores, status enum, diagnosis, actions), eliminating free-text parsing failures
+13. THE System SHALL include recent history in each analysis request (the last 5 readings and the most recent diagnosis) and SHALL instruct the AI_Engine to judge trends and keep scores consistent with previous assessments
+14. WHEN an assessment is stored, THE System SHALL also store an exponentially smoothed health score (EWMA, alpha 0.4) for trend-stable analytics
+15. THE Health_Assessment SHALL include per-crop scores: maize_score for the two maize seedlings and beans_score for the two bean seedlings, stored with the record and displayed on the Dashboard and Simulator
 
 ### Requirement 5: Historical Telemetry Retrieval
 
@@ -165,6 +169,7 @@ The AI-Powered Plant Health Monitoring IoT System is a full-stack Next.js web ap
 11. THE Dashboard SHALL follow the Material Design 3 type-scale hierarchy using the Inter typeface, with large bold numerals for metric values
 12. THE System SHALL use a custom design-system dropdown component (styled trigger with chevron, white popover options panel, deep-green selected state with check mark) in place of native select controls, site-wide
 13. THE System SHALL display helper info icons with tooltip popovers beside charts and data cards, explaining what each one shows
+14. ON viewports narrower than the desktop breakpoint, THE System SHALL display a fixed top bar with the brand and a menu button that opens a slide-over drawer containing the full navigation and log-out control
 
 ### Requirement 11: Environment Configuration
 
@@ -255,7 +260,20 @@ The AI-Powered Plant Health Monitoring IoT System is a full-stack Next.js web ap
 1. THE Settings page SHALL let the Plant_Owner register an email address for health alerts and turn email alerts on or off
 2. THE System SHALL store the email alert configuration server-side in the Database
 3. WHEN email alerts are enabled without a valid email address, THE System SHALL reject the save with an HTTP 400 error
-4. WHEN a Health_Assessment with Status_Classification Critical is stored AND email alerts are enabled, THE System SHALL send an email to the registered address containing the health score, the diagnosis, the recommended actions, and the telemetry at capture
+4. WHEN two consecutive Health_Assessments with Status_Classification Critical are stored AND email alerts are enabled, THE System SHALL send an email to the registered address containing the health score, the diagnosis, the recommended actions, and the telemetry at capture; a single Critical SHALL only log a deferral (hysteresis against single-capture noise)
 5. THE System SHALL send at most one alert email per hour
 6. THE System SHALL send email via the Resend API, reading RESEND_API_KEY and optional ALERT_FROM_EMAIL (defaulting to Resend's test sender) from environment variables; WHILE the key is not configured in a development environment, THE System SHALL render the email to the server log instead of sending
 7. Email failures SHALL never fail telemetry ingestion (non-blocking, logged)
+
+### Requirement 18: Security and Authentication
+
+**User Story:** As the plant owner, I want the dashboard and APIs protected, so that strangers cannot read my data, burn my AI quota, or hijack my alert email.
+
+#### Acceptance Criteria
+
+1. WHEN DASHBOARD_PASSWORD and SESSION_SECRET are configured, THE System SHALL require sign-in at /login before serving any page or API response
+2. WHEN the correct password is submitted, THE System SHALL issue a stateless HMAC session token as an httpOnly cookie valid for 30 days; all secret comparisons SHALL be timing-safe
+3. WHEN a request is unauthenticated, THE System SHALL return HTTP 401 for API routes and redirect page requests to /login
+4. THE Telemetry_Endpoint SHALL additionally accept device submissions authenticated by an x-device-key header matching DEVICE_API_KEY, independent of a browser session
+5. THE sidebar SHALL provide a log-out control that clears the session cookie
+6. WHILE the security environment variables are not configured, THE System SHALL allow access for local development convenience; production deployments MUST set DASHBOARD_PASSWORD, SESSION_SECRET, and DEVICE_API_KEY

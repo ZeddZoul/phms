@@ -136,23 +136,62 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    await connectToDatabase();
+
+    // Recent records feed the AI (temporal consistency), the EWMA smoothing,
+    // and the two-consecutive-Criticals alert hysteresis
+    const recent = await Telemetry.find()
+      .sort({ timestamp: -1 })
+      .limit(5)
+      .select(
+        'timestamp temperature humidity soilMoisture healthScore smoothedScore status diagnosis'
+      )
+      .lean<
+        Array<{
+          timestamp: Date;
+          temperature: number;
+          humidity: number;
+          soilMoisture: number;
+          healthScore?: number;
+          smoothedScore?: number;
+          status?: string;
+          diagnosis?: string;
+        }>
+      >();
+
     // AI analysis — non-blocking: failures are logged and telemetry is stored
     // without a health assessment (graceful degradation). The maize/beans
     // system prompt is context-cached inside lib/gemini.ts.
     let healthAssessment: Partial<HealthAssessment> = {};
 
     try {
-      healthAssessment = await analyzePlantHealth(buffer, mimeType, {
-        temperature: tempValue,
-        humidity: humidityValue,
-        soilMoisture: soilMoistureValue,
-      });
+      healthAssessment = await analyzePlantHealth(
+        buffer,
+        mimeType,
+        {
+          temperature: tempValue,
+          humidity: humidityValue,
+          soilMoisture: soilMoistureValue,
+        },
+        recent
+      );
     } catch (aiError) {
       console.error('AI analysis failed:', aiError);
       // Continue without health assessment
     }
 
-    await connectToDatabase();
+    // EWMA smoothing (alpha = 0.4): a trend-stable score that damps
+    // single-capture noise from lighting or model variance
+    let smoothedScore: number | undefined;
+    if (typeof healthAssessment.health_score === 'number') {
+      const previous =
+        recent.find((r) => typeof r.smoothedScore === 'number')?.smoothedScore ??
+        recent.find((r) => typeof r.healthScore === 'number')?.healthScore;
+      smoothedScore =
+        previous === undefined
+          ? healthAssessment.health_score
+          : Math.round(0.4 * healthAssessment.health_score + 0.6 * previous);
+    }
 
     const telemetryDoc = new Telemetry({
       timestamp: new Date(),
@@ -161,6 +200,9 @@ export async function POST(request: NextRequest) {
       soilMoisture: soilMoistureValue,
       imageUrl: uploadResult,
       healthScore: healthAssessment.health_score,
+      smoothedScore,
+      maizeScore: healthAssessment.maize_score,
+      beansScore: healthAssessment.beans_score,
       status: healthAssessment.status,
       diagnosis: healthAssessment.diagnosis,
       recommendedActions: healthAssessment.recommended_actions,
@@ -168,18 +210,25 @@ export async function POST(request: NextRequest) {
 
     await telemetryDoc.save();
 
-    // Critical assessments trigger the owner's email alert (server-side
-    // setting; non-blocking, with its own cooldown and error handling)
+    // Email hysteresis: a single Critical can be noise (lighting, model
+    // variance) — alert only when two consecutive assessments are Critical
     if (healthAssessment.status === 'Critical') {
-      await maybeSendCriticalAlertEmail({
-        healthScore: healthAssessment.health_score,
-        diagnosis: healthAssessment.diagnosis,
-        recommendedActions: healthAssessment.recommended_actions,
-        temperature: tempValue,
-        humidity: humidityValue,
-        soilMoisture: soilMoistureValue,
-        timestamp: telemetryDoc.timestamp,
-      });
+      const previousAssessed = recent.find((r) => r.status);
+      if (previousAssessed?.status === 'Critical') {
+        await maybeSendCriticalAlertEmail({
+          healthScore: healthAssessment.health_score,
+          diagnosis: healthAssessment.diagnosis,
+          recommendedActions: healthAssessment.recommended_actions,
+          temperature: tempValue,
+          humidity: humidityValue,
+          soilMoisture: soilMoistureValue,
+          timestamp: telemetryDoc.timestamp,
+        });
+      } else {
+        console.log(
+          'First Critical assessment — alert email deferred until a second consecutive Critical confirms it.'
+        );
+      }
     }
 
     return NextResponse.json(

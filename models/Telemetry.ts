@@ -7,6 +7,9 @@ export interface ITelemetry extends Document {
   soilMoisture: number;
   imageUrl: string;
   healthScore?: number;
+  smoothedScore?: number;
+  maizeScore?: number;
+  beansScore?: number;
   status?: 'Healthy' | 'Warning' | 'Critical';
   diagnosis?: string;
   recommendedActions?: string[];
@@ -40,6 +43,21 @@ const TelemetrySchema: Schema = new Schema({
     required: true,
   },
   healthScore: {
+    type: Number,
+    min: 0,
+    max: 100,
+  },
+  smoothedScore: {
+    type: Number,
+    min: 0,
+    max: 100,
+  },
+  maizeScore: {
+    type: Number,
+    min: 0,
+    max: 100,
+  },
+  beansScore: {
     type: Number,
     min: 0,
     max: 100,
