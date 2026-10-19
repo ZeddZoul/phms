@@ -19,11 +19,15 @@ differently. For a Seeed XIAO ESP32S3 Sense, replace the camera pin block
 with that board's pin map (see the `CameraWebServer` example bundled with
 arduino-esp32).
 
-**How the two soil probes combine:** each is calibrated separately and
-converted to 0–100%, then averaged into the single `soilMoisture` value
-the API expects. If they disagree by more than 30 points the sketch logs a
-warning and trusts the capacitive probe alone (big disagreement usually
-means the resistive fork is corroding or out of the soil).
+**Container convention (critical):** the two probes serve two different
+containers — **Container A is the LEFT container in the camera frame and
+holds the capacitive probe; Container B is the RIGHT container and holds
+the resistive probe.** Mount the camera so this never changes (and re-check
+it if you ever enable `CAM_HMIRROR`, which swaps left/right). The sketch
+sends `soilMoistureA`, `soilMoistureB`, and their average (`soilMoisture`,
+for backward compatibility); the AI matches each side of the photo with
+that container's own soil reading and assesses the two containers
+independently on the dashboard.
 
 ## Arduino IDE setup
 

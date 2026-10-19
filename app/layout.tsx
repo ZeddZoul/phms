@@ -11,14 +11,14 @@ export const metadata: Metadata = {
     template: "%s · PHMS",
   },
   description:
-    "AI-powered plant health monitoring for maize & beans. An ESP32-S3-CAM captures photos and environmental telemetry; Gemini AI scores plant health, diagnoses problems, and recommends actions on a live dashboard with trends and email alerts.",
+    "AI-powered plant health monitoring for maize & beans. An ESP32-S3-CAM captures photos and environmental telemetry; the PHMS AI scores plant health, diagnoses problems, and recommends actions on a live dashboard with trends and email alerts.",
   applicationName: "PHMS",
   keywords: [
     "plant health monitoring",
     "IoT agriculture",
     "smart farming",
     "ESP32-S3-CAM",
-    "Gemini AI",
+    "PHMS AI",
     "maize",
     "beans",
     "soil moisture",
@@ -30,13 +30,13 @@ export const metadata: Metadata = {
     siteName: "PHMS",
     title: "PHMS — AI Plant Health Monitoring",
     description:
-      "ESP32 camera + sensors, Gemini AI diagnosis, and a live dashboard with health scores, per-crop insights, trends, and email alerts for maize & beans.",
+      "ESP32 camera + sensors, PHMS AI diagnosis, and a live dashboard with health scores, per-crop insights, trends, and email alerts for maize & beans.",
   },
   twitter: {
     card: "summary_large_image",
     title: "PHMS — AI Plant Health Monitoring",
     description:
-      "ESP32 camera + sensors, Gemini AI diagnosis, and a live dashboard with health scores, trends, and email alerts for maize & beans.",
+      "ESP32 camera + sensors, PHMS AI diagnosis, and a live dashboard with health scores, trends, and email alerts for maize & beans.",
   },
   robots: { index: true, follow: true },
 };

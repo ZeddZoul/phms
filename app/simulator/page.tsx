@@ -11,9 +11,12 @@ import HealthGauge from '../components/HealthGauge';
 import type { TelemetryRecord } from '@/types/telemetry';
 
 export default function SimulatorPage() {
-  const [temperature, setTemperature] = useState('25.0');
-  const [humidity, setHumidity] = useState('60');
-  const [soilMoisture, setSoilMoisture] = useState('45');
+  const [tempA, setTempA] = useState('25.0');
+  const [tempB, setTempB] = useState('25.0');
+  const [humA, setHumA] = useState('60');
+  const [humB, setHumB] = useState('60');
+  const [soilA, setSoilA] = useState('45');
+  const [soilB, setSoilB] = useState('45');
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -44,9 +47,13 @@ export default function SimulatorPage() {
   };
 
   const randomize = () => {
-    setTemperature((16 + Math.random() * 22).toFixed(1));
-    setHumidity(String(Math.round(30 + Math.random() * 65)));
-    setSoilMoisture(String(Math.round(10 + Math.random() * 75)));
+    // Independent per container — rehearse "A fine, B at risk" scenarios
+    setTempA((16 + Math.random() * 22).toFixed(1));
+    setTempB((16 + Math.random() * 22).toFixed(1));
+    setHumA(String(Math.round(30 + Math.random() * 65)));
+    setHumB(String(Math.round(30 + Math.random() * 65)));
+    setSoilA(String(Math.round(10 + Math.random() * 75)));
+    setSoilB(String(Math.round(10 + Math.random() * 75)));
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -61,9 +68,12 @@ export default function SimulatorPage() {
     try {
       const formData = new FormData();
       formData.append('image', file);
-      formData.append('temperature', temperature);
-      formData.append('humidity', humidity);
-      formData.append('soilMoisture', soilMoisture);
+      formData.append('temperatureA', tempA);
+      formData.append('temperatureB', tempB);
+      formData.append('humidityA', humA);
+      formData.append('humidityB', humB);
+      formData.append('soilMoistureA', soilA);
+      formData.append('soilMoistureB', soilB);
 
       const response = await fetch('/api/telemetry', {
         method: 'POST',
@@ -135,9 +145,26 @@ export default function SimulatorPage() {
             </p>
 
             <div className="space-y-5">
-              {field('Temperature', '°C', temperature, setTemperature, 5, 45, 0.1)}
-              {field('Humidity', '%', humidity, setHumidity, 0, 100, 1)}
-              {field('Soil Moisture', '%', soilMoisture, setSoilMoisture, 0, 100, 1)}
+              <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
+                <div className="space-y-5">
+                  <div className="text-sm font-semibold text-gray-900">
+                    Container A{' '}
+                    <span className="font-normal text-gray-500">(left)</span>
+                  </div>
+                  {field('Temperature', '°C', tempA, setTempA, 5, 45, 0.1)}
+                  {field('Humidity', '%', humA, setHumA, 0, 100, 1)}
+                  {field('Soil Moisture', '%', soilA, setSoilA, 0, 100, 1)}
+                </div>
+                <div className="space-y-5">
+                  <div className="text-sm font-semibold text-gray-900">
+                    Container B{' '}
+                    <span className="font-normal text-gray-500">(right)</span>
+                  </div>
+                  {field('Temperature', '°C', tempB, setTempB, 5, 45, 0.1)}
+                  {field('Humidity', '%', humB, setHumB, 0, 100, 1)}
+                  {field('Soil Moisture', '%', soilB, setSoilB, 0, 100, 1)}
+                </div>
+              </div>
 
               <div>
                 <span className="mb-2 block text-sm font-medium text-gray-700">
@@ -217,7 +244,7 @@ export default function SimulatorPage() {
 
             {submitting ? (
               <div className="flex h-64 items-center justify-center text-gray-500">
-                Uploading and waiting for Gemini…
+                Uploading and waiting for the PHMS AI…
               </div>
             ) : result ? (
               <div className="space-y-4">
@@ -227,33 +254,69 @@ export default function SimulatorPage() {
                       <HealthGauge score={result.healthScore} />
                       <div className="space-y-2">
                         <StatusBadge status={result.status} />
-                        {(result.maizeScore !== undefined ||
-                          result.beansScore !== undefined) && (
-                          <div className="flex flex-wrap gap-2 text-sm">
-                            {result.maizeScore !== undefined && (
-                              <span className="rounded-lg bg-gray-50 px-2.5 py-1">
-                                <span className="text-gray-500">Maize</span>{' '}
-                                <span className="font-bold text-gray-900">
-                                  {result.maizeScore}
-                                </span>
-                              </span>
-                            )}
-                            {result.beansScore !== undefined && (
-                              <span className="rounded-lg bg-gray-50 px-2.5 py-1">
-                                <span className="text-gray-500">Beans</span>{' '}
-                                <span className="font-bold text-gray-900">
-                                  {result.beansScore}
-                                </span>
-                              </span>
-                            )}
-                          </div>
-                        )}
                         <div className="text-sm text-gray-500">
                           Recorded{' '}
                           {new Date(result.timestamp).toLocaleTimeString()}
                         </div>
                       </div>
                     </div>
+                    {(result.containerAScore !== undefined ||
+                      result.containerBScore !== undefined) && (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {[
+                          {
+                            label: 'Container A',
+                            side: 'left',
+                            score: result.containerAScore,
+                            status: result.containerAStatus,
+                            diagnosis: result.containerADiagnosis,
+                            soil: result.soilMoistureA,
+                          },
+                          {
+                            label: 'Container B',
+                            side: 'right',
+                            score: result.containerBScore,
+                            status: result.containerBStatus,
+                            diagnosis: result.containerBDiagnosis,
+                            soil: result.soilMoistureB,
+                          },
+                        ].map(
+                          (c) =>
+                            c.score !== undefined && (
+                              <div
+                                key={c.label}
+                                className="rounded-xl border border-gray-100 bg-gray-50 p-4"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-semibold text-gray-900">
+                                    {c.label}{' '}
+                                    <span className="text-xs font-normal text-gray-500">
+                                      ({c.side})
+                                    </span>
+                                  </span>
+                                  <StatusBadge status={c.status} />
+                                </div>
+                                <div className="mt-2 text-2xl font-bold text-gray-900">
+                                  {c.score}
+                                  <span className="text-sm font-normal text-gray-500">
+                                    /100
+                                  </span>
+                                  {typeof c.soil === 'number' && (
+                                    <span className="ml-3 text-sm font-normal text-gray-500">
+                                      soil {c.soil}%
+                                    </span>
+                                  )}
+                                </div>
+                                {c.diagnosis && (
+                                  <p className="mt-1.5 text-sm text-gray-600">
+                                    {c.diagnosis}
+                                  </p>
+                                )}
+                              </div>
+                            )
+                        )}
+                      </div>
+                    )}
                     {result.diagnosis && (
                       <div>
                         <span className="font-medium text-gray-700">Diagnosis</span>
@@ -294,7 +357,7 @@ export default function SimulatorPage() {
                 <Sprout className="h-8 w-8" />
                 <p className="max-w-xs text-sm">
                   Set the telemetry values, pick a maize &amp; beans photo, and send
-                  it — Gemini&apos;s assessment will appear here and on the main
+                  it — the PHMS AI&apos;s assessment will appear here and on the main
                   dashboard.
                 </p>
               </div>

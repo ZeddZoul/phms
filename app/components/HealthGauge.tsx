@@ -14,16 +14,23 @@ function gaugeColor(score: number): string {
   return '#DC2626'; // red — Critical
 }
 
-export default function HealthGauge({ score }: { score: number }) {
+export default function HealthGauge({
+  score,
+  size = 160,
+}: {
+  score: number;
+  size?: number;
+}) {
+  const large = size >= 140;
   return (
-    <div className="relative h-40 w-40">
+    <div className="relative" style={{ width: size, height: size }}>
       <ResponsiveContainer width="100%" height="100%">
         <RadialBarChart
           cx="50%"
           cy="50%"
           innerRadius="78%"
           outerRadius="100%"
-          barSize={10}
+          barSize={large ? 10 : 7}
           data={[{ name: 'score', value: score }]}
           startAngle={90}
           endAngle={-270}
@@ -38,8 +45,12 @@ export default function HealthGauge({ score }: { score: number }) {
         </RadialBarChart>
       </ResponsiveContainer>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-3xl font-bold text-gray-900">{score}</span>
-        <span className="text-xs text-gray-500">/ 100</span>
+        <span className={`${large ? 'text-3xl' : 'text-xl'} font-bold text-gray-900`}>
+          {score}
+        </span>
+        <span className={`${large ? 'text-xs' : 'text-[10px]'} text-gray-500`}>
+          / 100
+        </span>
       </div>
     </div>
   );

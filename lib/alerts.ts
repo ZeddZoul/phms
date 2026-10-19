@@ -5,6 +5,12 @@ import AlertSettings from '@/models/AlertSettings';
 // doesn't flood the owner's inbox while the device keeps reporting.
 const EMAIL_COOLDOWN_MS = 60 * 60 * 1000;
 
+interface ContainerAssessment {
+  score: number;
+  status?: string;
+  diagnosis?: string;
+}
+
 interface CriticalRecord {
   healthScore?: number;
   diagnosis?: string;
@@ -12,6 +18,14 @@ interface CriticalRecord {
   temperature: number;
   humidity: number;
   soilMoisture: number;
+  soilMoistureA?: number;
+  soilMoistureB?: number;
+  temperatureA?: number;
+  temperatureB?: number;
+  humidityA?: number;
+  humidityB?: number;
+  containerA?: ContainerAssessment;
+  containerB?: ContainerAssessment;
   timestamp: Date;
 }
 
@@ -24,15 +38,37 @@ function buildEmail(record: CriticalRecord) {
 
   const subject = `Critical plant health alert — ${score}/100`;
 
+  const containerLine = (
+    label: string,
+    c?: ContainerAssessment,
+    soil?: number
+  ) =>
+    c
+      ? `${label}: ${c.score}/100 (${c.status ?? 'n/a'})${
+          typeof soil === 'number' ? `, soil ${soil}%` : ''
+        }${c.diagnosis ? ` — ${c.diagnosis}` : ''}`
+      : null;
+
+  const containerBlock = [
+    containerLine('Container A (left)', record.containerA, record.soilMoistureA),
+    containerLine('Container B (right)', record.containerB, record.soilMoistureB),
+  ].filter(Boolean) as string[];
+
+  const soilSummary =
+    typeof record.soilMoistureA === 'number' && typeof record.soilMoistureB === 'number'
+      ? `A: ${record.soilMoistureA}% soil${typeof record.temperatureA === 'number' ? `, ${record.temperatureA}°C, ${record.humidityA}% RH` : ''} · B: ${record.soilMoistureB}% soil${typeof record.temperatureB === 'number' ? `, ${record.temperatureB}°C, ${record.humidityB}% RH` : ''}`
+      : `Soil moisture: ${record.soilMoisture}%`;
+
   const text = [
     `Your maize & beans need attention — the latest AI assessment came back CRITICAL (${score}/100) at ${when}.`,
     '',
     `Diagnosis: ${record.diagnosis ?? 'No diagnosis available.'}`,
+    ...(containerBlock.length ? ['', 'Per container:', ...containerBlock] : []),
     '',
     'What you should do now:',
     ...actions.map((a, i) => `${i + 1}. ${a}`),
     '',
-    `Conditions at capture — Temperature: ${record.temperature}°C · Humidity: ${record.humidity}% · Soil moisture: ${record.soilMoisture}%`,
+    `Conditions at capture — Temperature: ${record.temperature}°C · Humidity: ${record.humidity}% · ${soilSummary}`,
     '',
     'Open the dashboard for the full picture, including the plant photo.',
   ].join('\n');
@@ -48,6 +84,14 @@ function buildEmail(record: CriticalRecord) {
         <p style="color: #6B7280; font-size: 13px; margin: 0 0 16px;">AI assessment from ${when}</p>
         <h2 style="font-size: 14px; margin: 0 0 6px;">Diagnosis</h2>
         <p style="font-size: 14px; line-height: 1.6; margin: 0 0 16px;">${record.diagnosis ?? 'No diagnosis available.'}</p>
+        ${
+          containerBlock.length
+            ? `<h2 style="font-size: 14px; margin: 0 0 6px;">Per container</h2>
+        <ul style="font-size: 14px; line-height: 1.7; margin: 0 0 16px; padding-left: 20px;">
+          ${containerBlock.map((l) => `<li>${l}</li>`).join('')}
+        </ul>`
+            : ''
+        }
         <h2 style="font-size: 14px; margin: 0 0 6px;">What you should do now</h2>
         <ol style="font-size: 14px; line-height: 1.8; margin: 0 0 16px; padding-left: 20px;">
           ${actions.map((a) => `<li>${a}</li>`).join('')}
@@ -55,7 +99,7 @@ function buildEmail(record: CriticalRecord) {
         <p style="font-size: 13px; color: #6B7280; margin: 0;">
           Conditions at capture — Temperature: <strong>${record.temperature}°C</strong> ·
           Humidity: <strong>${record.humidity}%</strong> ·
-          Soil moisture: <strong>${record.soilMoisture}%</strong>
+          <strong>${soilSummary}</strong>
         </p>
       </div>
     </div>`;

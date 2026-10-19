@@ -58,7 +58,7 @@ export default function OgImage() {
         </div>
 
         <div style={{ display: 'flex', gap: 20 }}>
-          {['📷  ESP32-S3-CAM', '🤖  Gemini AI', '📈  Live dashboard', '✉️  Email alerts'].map(
+          {['📷  ESP32-S3-CAM', '🤖  PHMS AI', '📈  Live dashboard', '✉️  Email alerts'].map(
             (chip) => (
               <div
                 key={chip}

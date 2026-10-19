@@ -120,6 +120,11 @@ export default function NotificationsBell() {
                     </div>
                     <p className="mt-1.5 line-clamp-2 text-sm text-gray-600">
                       Health score {a.healthScore}/100
+                      {a.containerAStatus === 'Critical' && a.containerBStatus !== 'Critical'
+                        ? ' · Container A'
+                        : a.containerBStatus === 'Critical' && a.containerAStatus !== 'Critical'
+                          ? ' · Container B'
+                          : ''}
                       {a.diagnosis ? ` — ${a.diagnosis}` : ''}
                     </p>
                   </li>

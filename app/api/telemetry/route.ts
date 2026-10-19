@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
 import connectToDatabase from '@/lib/mongodb';
 import { analyzePlantHealth } from '@/lib/gemini';
+import {
+  classifyAiError,
+  computeSmoothedScore,
+  describeAiError,
+  isSecondConsecutiveCritical,
+} from '@/lib/scoring';
 import { maybeSendCriticalAlertEmail } from '@/lib/alerts';
 import Telemetry from '@/models/Telemetry';
 import type { HealthAssessment } from '@/types/telemetry';
@@ -42,41 +48,111 @@ export async function POST(request: NextRequest) {
     const temperature = formData.get('temperature');
     const humidity = formData.get('humidity');
     const soilMoisture = formData.get('soilMoisture');
+    // Per-container readings: A = left container (capacitive soil probe +
+    // its own DHT), B = right container (resistive probe + its own DHT).
+    // Legacy devices send only the combined fields; when both per-container
+    // values arrive, the combined value is derived as their average.
+    const soilMoistureA = formData.get('soilMoistureA');
+    const soilMoistureB = formData.get('soilMoistureB');
+    const temperatureA = formData.get('temperatureA');
+    const temperatureB = formData.get('temperatureB');
+    const humidityA = formData.get('humidityA');
+    const humidityB = formData.get('humidityB');
+    const hasPerContainer = Boolean(soilMoistureA && soilMoistureB);
+    const hasPerContainerAir = Boolean(
+      temperatureA && temperatureB && humidityA && humidityB
+    );
 
     if (!(image instanceof File) || image.size === 0) {
       return NextResponse.json({ error: 'Image file is required' }, { status: 400 });
     }
 
-    if (!temperature || !humidity || !soilMoisture) {
+    if (
+      ((!temperature || !humidity) && !hasPerContainerAir) ||
+      (!soilMoisture && !hasPerContainer)
+    ) {
       return NextResponse.json(
         { error: 'Missing required telemetry fields' },
         { status: 400 }
       );
     }
 
-    const tempValue = parseFloat(temperature as string);
-    const humidityValue = parseFloat(humidity as string);
-    const soilMoistureValue = parseFloat(soilMoisture as string);
+    const avg = (a: number, b: number) => Math.round(((a + b) / 2) * 10) / 10;
 
-    if (isNaN(tempValue)) {
-      return NextResponse.json(
-        { error: 'Temperature must be a valid number' },
-        { status: 400 }
-      );
+    let tempAValue: number | undefined;
+    let tempBValue: number | undefined;
+    let humidityAValue: number | undefined;
+    let humidityBValue: number | undefined;
+    let tempValue: number;
+    let humidityValue: number;
+
+    if (hasPerContainerAir) {
+      tempAValue = parseFloat(temperatureA as string);
+      tempBValue = parseFloat(temperatureB as string);
+      humidityAValue = parseFloat(humidityA as string);
+      humidityBValue = parseFloat(humidityB as string);
+      if (isNaN(tempAValue) || isNaN(tempBValue)) {
+        return NextResponse.json(
+          { error: 'Temperature A and B must be valid numbers' },
+          { status: 400 }
+        );
+      }
+      if (
+        isNaN(humidityAValue) || humidityAValue < 0 || humidityAValue > 100 ||
+        isNaN(humidityBValue) || humidityBValue < 0 || humidityBValue > 100
+      ) {
+        return NextResponse.json(
+          { error: 'Humidity A and B must be numbers between 0 and 100' },
+          { status: 400 }
+        );
+      }
+      tempValue = avg(tempAValue, tempBValue);
+      humidityValue = avg(humidityAValue, humidityBValue);
+    } else {
+      tempValue = parseFloat(temperature as string);
+      humidityValue = parseFloat(humidity as string);
+
+      if (isNaN(tempValue)) {
+        return NextResponse.json(
+          { error: 'Temperature must be a valid number' },
+          { status: 400 }
+        );
+      }
+
+      if (isNaN(humidityValue) || humidityValue < 0 || humidityValue > 100) {
+        return NextResponse.json(
+          { error: 'Humidity must be a number between 0 and 100' },
+          { status: 400 }
+        );
+      }
     }
 
-    if (isNaN(humidityValue) || humidityValue < 0 || humidityValue > 100) {
-      return NextResponse.json(
-        { error: 'Humidity must be a number between 0 and 100' },
-        { status: 400 }
-      );
-    }
+    let soilAValue: number | undefined;
+    let soilBValue: number | undefined;
+    let soilMoistureValue: number;
 
-    if (isNaN(soilMoistureValue) || soilMoistureValue < 0 || soilMoistureValue > 100) {
-      return NextResponse.json(
-        { error: 'Soil moisture must be a number between 0 and 100' },
-        { status: 400 }
-      );
+    if (hasPerContainer) {
+      soilAValue = parseFloat(soilMoistureA as string);
+      soilBValue = parseFloat(soilMoistureB as string);
+      if (
+        isNaN(soilAValue) || soilAValue < 0 || soilAValue > 100 ||
+        isNaN(soilBValue) || soilBValue < 0 || soilBValue > 100
+      ) {
+        return NextResponse.json(
+          { error: 'Soil moisture A and B must be numbers between 0 and 100' },
+          { status: 400 }
+        );
+      }
+      // Combined value kept for backward compatibility (old records, charts)
+      soilMoistureValue = Math.round(((soilAValue + soilBValue) / 2) * 10) / 10;
+    } else {
+      soilMoistureValue = parseFloat(soilMoisture as string);
+      if (isNaN(soilMoistureValue) || soilMoistureValue < 0 || soilMoistureValue > 100) {
+        return NextResponse.json(
+          { error: 'Soil moisture must be a number between 0 and 100' },
+          { status: 400 }
+        );
+      }
     }
 
     const bytes = await image.arrayBuffer();
@@ -144,7 +220,7 @@ export async function POST(request: NextRequest) {
       .sort({ timestamp: -1 })
       .limit(5)
       .select(
-        'timestamp temperature humidity soilMoisture healthScore smoothedScore status diagnosis'
+        'timestamp temperature humidity soilMoisture soilMoistureA soilMoistureB healthScore smoothedScore containerAScore containerBScore status diagnosis'
       )
       .lean<
         Array<{
@@ -152,8 +228,12 @@ export async function POST(request: NextRequest) {
           temperature: number;
           humidity: number;
           soilMoisture: number;
+          soilMoistureA?: number;
+          soilMoistureB?: number;
           healthScore?: number;
           smoothedScore?: number;
+          containerAScore?: number;
+          containerBScore?: number;
           status?: string;
           diagnosis?: string;
         }>
@@ -163,6 +243,7 @@ export async function POST(request: NextRequest) {
     // without a health assessment (graceful degradation). The maize/beans
     // system prompt is context-cached inside lib/gemini.ts.
     let healthAssessment: Partial<HealthAssessment> = {};
+    let assessmentError: string | undefined;
 
     try {
       healthAssessment = await analyzePlantHealth(
@@ -172,25 +253,30 @@ export async function POST(request: NextRequest) {
           temperature: tempValue,
           humidity: humidityValue,
           soilMoisture: soilMoistureValue,
+          soilMoistureA: soilAValue,
+          soilMoistureB: soilBValue,
+          temperatureA: tempAValue,
+          temperatureB: tempBValue,
+          humidityA: humidityAValue,
+          humidityB: humidityBValue,
         },
         recent
       );
+      if (healthAssessment.health_score === undefined) {
+        // The call succeeded but the payload failed validation
+        assessmentError = 'invalid_response';
+        console.warn(describeAiError('invalid_response'));
+      }
     } catch (aiError) {
-      console.error('AI analysis failed:', aiError);
+      const kind = classifyAiError(aiError);
+      assessmentError = kind;
+      console.error(`AI analysis failed (${kind}): ${describeAiError(kind)}`, aiError);
       // Continue without health assessment
     }
 
-    // EWMA smoothing (alpha = 0.4): a trend-stable score that damps
-    // single-capture noise from lighting or model variance
     let smoothedScore: number | undefined;
     if (typeof healthAssessment.health_score === 'number') {
-      const previous =
-        recent.find((r) => typeof r.smoothedScore === 'number')?.smoothedScore ??
-        recent.find((r) => typeof r.healthScore === 'number')?.healthScore;
-      smoothedScore =
-        previous === undefined
-          ? healthAssessment.health_score
-          : Math.round(0.4 * healthAssessment.health_score + 0.6 * previous);
+      smoothedScore = computeSmoothedScore(healthAssessment.health_score, recent);
     }
 
     const telemetryDoc = new Telemetry({
@@ -198,14 +284,31 @@ export async function POST(request: NextRequest) {
       temperature: tempValue,
       humidity: humidityValue,
       soilMoisture: soilMoistureValue,
+      soilMoistureA: soilAValue,
+      soilMoistureB: soilBValue,
+      temperatureA: tempAValue,
+      temperatureB: tempBValue,
+      humidityA: humidityAValue,
+      humidityB: humidityBValue,
       imageUrl: uploadResult,
       healthScore: healthAssessment.health_score,
       smoothedScore,
       maizeScore: healthAssessment.maize_score,
       beansScore: healthAssessment.beans_score,
+      containerAScore: healthAssessment.container_a_score,
+      containerAStatus: healthAssessment.container_a_status,
+      containerADiagnosis: healthAssessment.container_a_diagnosis,
+      containerBScore: healthAssessment.container_b_score,
+      containerBStatus: healthAssessment.container_b_status,
+      containerBDiagnosis: healthAssessment.container_b_diagnosis,
+      maizeAScore: healthAssessment.maize_a_score,
+      beansAScore: healthAssessment.beans_a_score,
+      maizeBScore: healthAssessment.maize_b_score,
+      beansBScore: healthAssessment.beans_b_score,
       status: healthAssessment.status,
       diagnosis: healthAssessment.diagnosis,
       recommendedActions: healthAssessment.recommended_actions,
+      assessmentError,
     });
 
     await telemetryDoc.save();
@@ -213,8 +316,7 @@ export async function POST(request: NextRequest) {
     // Email hysteresis: a single Critical can be noise (lighting, model
     // variance) — alert only when two consecutive assessments are Critical
     if (healthAssessment.status === 'Critical') {
-      const previousAssessed = recent.find((r) => r.status);
-      if (previousAssessed?.status === 'Critical') {
+      if (isSecondConsecutiveCritical(recent)) {
         await maybeSendCriticalAlertEmail({
           healthScore: healthAssessment.health_score,
           diagnosis: healthAssessment.diagnosis,
@@ -222,6 +324,28 @@ export async function POST(request: NextRequest) {
           temperature: tempValue,
           humidity: humidityValue,
           soilMoisture: soilMoistureValue,
+          soilMoistureA: soilAValue,
+          soilMoistureB: soilBValue,
+          temperatureA: tempAValue,
+          temperatureB: tempBValue,
+          humidityA: humidityAValue,
+          humidityB: humidityBValue,
+          containerA:
+            typeof healthAssessment.container_a_score === 'number'
+              ? {
+                  score: healthAssessment.container_a_score,
+                  status: healthAssessment.container_a_status,
+                  diagnosis: healthAssessment.container_a_diagnosis,
+                }
+              : undefined,
+          containerB:
+            typeof healthAssessment.container_b_score === 'number'
+              ? {
+                  score: healthAssessment.container_b_score,
+                  status: healthAssessment.container_b_status,
+                  diagnosis: healthAssessment.container_b_diagnosis,
+                }
+              : undefined,
           timestamp: telemetryDoc.timestamp,
         });
       } else {
