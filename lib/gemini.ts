@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import type { HealthAssessment } from '@/types/telemetry';
 
-const MODEL = 'gemini-2.5-flash';
+const MODEL = 'gemini-3.8-flash';
 const CACHE_TTL_SECONDS = 3600;
 
 /**
