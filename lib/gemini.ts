@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import type { HealthAssessment } from '@/types/telemetry';
 
-const MODEL = 'gemini-3.8-flash';
+const MODEL = 'gemini-3.5-flash-lite';
 const CACHE_TTL_SECONDS = 3600;
 
 /**
@@ -252,7 +252,15 @@ function getClient(): GoogleGenAI {
     throw new Error('GEMINI_API_KEY environment variable is not set');
   }
   if (!client) {
-    client = new GoogleGenAI({ apiKey });
+    // GEMINI_USE_VERTEX=1 routes the same key through Vertex AI express mode
+    // (billed to the Cloud Billing account) instead of the Gemini API
+    // (billed via AI Studio prepay credits). The key must allow the
+    // "Agent Platform API" and have it enabled on its project.
+    client = new GoogleGenAI(
+      process.env.GEMINI_USE_VERTEX === '1'
+        ? { vertexai: true, apiKey }
+        : { apiKey }
+    );
   }
   return client;
 }
